@@ -17,12 +17,12 @@ class SocketHttpServer
     public function start(): void
     {
         $this->socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
-        socket_bind($this->socket, $this->host, $this->port );
+        socket_bind($this->socket, $this->host, $this->port);
         socket_listen($this->socket);
 
         while ($connect = socket_accept($this->socket)) {
             $request = socket_read($connect, 1024);
-            echo "$request\n\n" ;
+            echo "$request\n\n";
 
             $response = $this->processHttpRequest($request);
 
@@ -37,16 +37,32 @@ class SocketHttpServer
         $requestLines = explode(' ', $request);
         $methodHttp = $requestLines[0];
 
-        $response = match ($methodHttp) {
-            'GET' => "200 OK\r\n\r\nHello, Client! You send GET request",
-            'POST' => "200 OK\r\n\r\nHello, Client! You send POST request",
-            default => "400 Bad Request"
-        };
+        $response = '';
+        if ($methodHttp == 'GET') {
+            $fp = fsockopen("ssl://www.google.com", 443, $errno, $errstr, 100);
 
-        return "HTTP/1.1 " . $response;
+            if (!$fp) {
+                echo "$errstr ($errno)<br />\n";
+            } else {
+                $out = "GET / HTTP/1.1\r\n";
+                $out .= "Host: www.google.com\r\n";
+                $out .= "Connection: Close\r\n\r\n";
+
+                fwrite($fp, $out);
+
+                while (!feof($fp)) {
+                    $response .= fread($fp, 128);
+                }
+
+                fclose($fp);
+            }
+        }
+
+        return $response;
     }
 
-    public function __destruct() {
+    public function __destruct()
+    {
         if (isset($this->socket)) {
             socket_close($this->socket);
         }

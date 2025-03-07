@@ -13,7 +13,7 @@ $socketServerClient = new SocketHttpServerClient($host, $port);
 
 $socketServerClient->connect();
 
-$socketServerClient->sendHttpRequest("POST /hello HTTP/1.1
+$socketServerClient->sendHttpRequest("GET /hello HTTP/1.1
 Host: localhost
 Content-Type: application/json
 Content-Length: 0
