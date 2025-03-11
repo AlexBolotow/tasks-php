@@ -1,9 +1,12 @@
 <?php
-
+/*
 const ROW_NOT_FIND = -1;
 const STATE_STOCK = "Stock";
 const STATE_HOLD = "Hold";
 const STATE_SOLD = "Sold";
+
+const ACTION_HOLD = "--hold";
+const ACTION_CONFIRM = "--confirm";
 
 function readCsv($file): array
 {
@@ -26,22 +29,96 @@ function findIndexRowBySku($data, $sku): int
     return ROW_NOT_FIND;
 }
 
-
-function updateRow(&$data, $sku, $priceToUpdate, $stateToUpdate): void
+function findIndexRowBySkuAndPriceWithStateStock($data, $sku, $price): int
 {
-    $indexRow = findIndexRowBySku($data, $sku);
-    if ($indexRow != ROW_NOT_FIND) {
-        $currentState = $data[$indexRow][2];
-        if ($currentState == STATE_STOCK && $stateToUpdate == STATE_HOLD) {
-            $data[$indexRow][2] = $stateToUpdate;
-            $data[$indexRow][1] = $priceToUpdate;
-            echo "bla";
+    foreach ($data as $index => $row) {
+        if ($row[0] == $sku && $price == $row[1] && $row[2] == STATE_STOCK) {
+            return $index;
         }
+    }
 
-        if ($stateToUpdate == STATE_HOLD && $stateToUpdate == STATE_SOLD) {
-            $data[$indexRow][2] = $stateToUpdate;
-            $data[$indexRow][0] = $priceToUpdate;
+    return ROW_NOT_FIND;
+}
+
+function findAllIndexRowsBySkuAndLessPriceWithStateStock($data, $sku, $price): array
+{
+    $indexRows = [];
+    foreach ($data as $index => $row) {
+        if (str_contains($row[0], $sku) && $price >= $row[1] && $row[2] == STATE_STOCK) {
+            $indexRows[] = $index;
         }
+    }
+
+    return $indexRows;
+}
+
+function findAllIndexRowsByOrder($data, $order): array
+{
+    $indexRows = [];
+    foreach ($data as $index => $row) {
+        if (str_contains($row[2], $order)) {
+            $indexRows[] = $index;
+        }
+    }
+
+    return $indexRows;
+}
+
+function holdAction(&$stockData, $stockHeaders, $order): void
+{
+
+    $indexRowWithEqualPrice = findIndexRowBySkuAndPriceWithStateStock($stockData, $stockHeaders['sku'],
+        $stockHeaders['price']);
+    if ($indexRowWithEqualPrice != ROW_NOT_FIND) {
+        updateRowForHold($indexRowWithEqualPrice, $stockData, $stockHeaders, $order);
+        return;
+    }
+
+    $indexRowsWithLessPrice = findAllIndexRowsBySkuAndLessPriceWithStateStock($stockData, $stockHeaders['sku'],
+        $stockHeaders['price']);
+    if (!empty($indexRowsWithLessPrice)) {
+        foreach ($indexRowsWithLessPrice as $indexRow) {
+            if ($stockHeaders['state'] == STATE_HOLD &&
+                $stockHeaders['price'] >= $stockData[$indexRow][1]) {
+
+                updateRowForHold($indexRow, $stockData, $stockHeaders, $order);
+                break;
+            }
+        }
+    } else {
+        echo 'Не удалось выполнить действие' . PHP_EOL;
+    }
+}
+
+function confirmAction(&$stockData, $stockHeadersToUpdate, $order): void
+{
+    $indexRows = findAllIndexRowsByOrder($stockData, $order);
+    if (!empty($indexRows)) {
+        foreach ($indexRows as $indexRow) {
+            $stockData[$indexRow][2] = $stockHeadersToUpdate['state'];
+        }
+    }
+}
+
+function updateRowForHold($indexRow, &$stockData, $stockHeadersToUpdate, $order): void
+{
+    $stockData[$indexRow][2] = $stockHeadersToUpdate['state'] . '/ORDER' . $order;
+    if (isset($stockHeadersToUpdate['price'])) {
+        $stockData[$indexRow][1] = $stockHeadersToUpdate['price'];
+    }
+
+    echo 'После изменений:' . PHP_EOL;
+    printStockCsv($stockData);
+}
+
+function doAction(&$stockData, $stockHeadersToUpdate, $order, $action): void
+{
+    if ($action == ACTION_HOLD) {
+        holdAction($stockData, $stockHeadersToUpdate, $order);
+    }
+
+    if ($action == ACTION_CONFIRM) {
+        confirmAction($stockData, $stockHeadersToUpdate, $order);
     }
 }
 
@@ -52,42 +129,73 @@ function rewriteCsv($file, $data): void
     }
 }
 
-function parseConsoleArguments($argv, &$sku, &$price, &$state): void
+function parseConsoleArguments($argv, &$stockHeaders, &$order, &$action): void
 {
-    $state = ucfirst(substr($argv[1], 2));
-    $sku = $argv[2];
-    if ($argv[1] == '--hold' && $argv[3] == '--price') {
-        $price = $argv[4];
+    $action = $argv[1];
+
+    if ($action == ACTION_CONFIRM) {
+        $stockHeaders['state'] = STATE_SOLD;
+        $order = $argv[2];
+    }
+
+    if ($action == ACTION_HOLD) {
+        $stockHeaders['sku'] = $argv[2];
+        $stockHeaders['state'] = STATE_HOLD;
+        $order = $argv[6];
+        if (isset($argv[4])) {
+            $stockHeaders['price'] = $argv[4];
+        }
     }
 }
 
-
-//php stock.php --hold TKU100 --price 100
-//php stock.php --confirm ORDER100
-
-//параллельный запуск
-//php stock.php --hold TKU100 --price 100 & php stock.php --hold TKU200 --price 200 & php stock.php --hold TKU300 --price 300
-
-/*$sku = null;
-$price = null;
-$state = null;
-parseConsoleArguments($_SERVER['argv'], $sku, $price, $state);*/
-var_dump($_SERVER['argv']);
-/*$stockFile = fopen('stock.csv', 'r+');
-if (flock($stockFile, LOCK_EX)) {
-    $data = readCsv($stockFile);
-    //print_r($data);
-    //fclose($stockFile);
-
-    updateRow($data, $sku, $price, $state);
-
-    rewind($stockFile); // Переместить указатель в начало файла
-    ftruncate($stockFile, 0); // Очистить файл
-    rewriteCsv($stockFile, $data);
-
-    flock($stockFile, LOCK_UN);
+function printStockCsv($stockData): void
+{
+    foreach ($stockData as $row) {
+        foreach ($row as $value) {
+            echo $value . ',';
+        }
+        echo PHP_EOL;
+    }
 }
 
+$stockHeaders = [
+    'sku' => null,
+    'price' => null,
+    'state' => null
+];
+$order = null;
+$action = null;
+parseConsoleArguments($_SERVER['argv'], $stockHeaders, $order, $action);
+$command = implode(' ', array_slice($argv, 1));
+
+$stockFile = fopen('stock.csv', 'r+');
+if (!$stockFile) {
+    echo "Не удалось открыть файл." . PHP_EOL;
+    exit;
+}
+
+while (!flock($stockFile, LOCK_EX | LOCK_NB)) {
+    echo "Ожидание доступа к файлу..." . PHP_EOL;
+    sleep(1);
+}
+
+
+echo "Команда: $command" . PHP_EOL;
+
+$stockData = readCsv($stockFile);
+
+echo 'До изменений:' . PHP_EOL;
+printStockCsv($stockData);
+
+doAction($stockData, $stockHeaders, $order, $action);
+
+rewind($stockFile);
+ftruncate($stockFile, 0);
+rewriteCsv($stockFile, $stockData);
+
+echo PHP_EOL;
+
+flock($stockFile, LOCK_UN);
 fclose($stockFile);*/
 
 

@@ -3,5 +3,9 @@
     "psr-4": {
       "app\\": "app/"
     }
+  },
+  "require": {
+    "ext-pcntl": "*",
+    "ext-pthreads": "*"
   }
 }

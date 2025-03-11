@@ -30,3 +30,154 @@ State
 
 получается может задерживаться несколько позиций и потом они становятся за один конфирм все солд
 в то время другой процесс тоже задерживает
+
+логика: меняет строку, а TKU
+
+варианты логики:
+ * id
+ * статус
+
+hold делается со сравнением цены и tku, цена может быть выше, но не ниже
+parallel -j 5 php stock.php --hold TKU5 --price 100 --order {} ::: {1..5} > log.txt 2>&1
+
+
+
+
+
+
+ /php stock.php --hold TKU100 --price 110 --order ORDER100
+ //php stock.php --confirm ORDER100
+
+ //параллельный запуск
+ //php stock.php --hold TKU100 --price 100 & php stock.php --hold TKU200 --price 200 & php stock.php --hold TKU300 --price 300
+
+
+ не запуск в 10 потоков
+ for i in {0..9}; do
+    tkui="TKU$i";
+    php stock.php --hold $tkui --price 100 --order 100;
+ done
+
+ parallel -j 10 php stock.php --hold TKU{} --price 100 --order 100 ::: {1..10} > log.txt 2>&1
+
+
+До изменений
+TKU1,100,Hold/ORDER100,
+TKU2,100,Stock,
+TKU3,100,Stock,
+TKU4,100,Stock,
+TKU5,100,Stock,
+TKU6,100,Stock,
+TKU7,100,Stock,
+TKU8,100,Stock,
+TKU9,100,Stock,
+TKU10,100,Stock,
+После изменений
+TKU1,100,Hold/ORDER100,
+TKU2,100,Stock,
+TKU3,100,Hold/ORDER100,
+TKU4,100,Stock,
+TKU5,100,Stock,
+TKU6,100,Stock,
+TKU7,100,Stock,
+TKU8,100,Stock,
+TKU9,100,Stock,
+TKU10,100,Stock,
+
+
+parallel -j 10  php stock.php --hold TKU{} --price {}  --order {} ::: {100..500..100} > log.txt 2>&1
+
+
+
+
+Команда: --hold TKU500 --price 100 --order 100
+До изменений:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Stock,
+TKU500,250,Stock,
+Не удалось выполнить действие
+
+Команда: --hold TKU500 --price 200 --order 200
+До изменений:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Stock,
+TKU500,250,Stock,
+После изменений:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Hold/ORDER200,
+TKU500,250,Stock,
+
+Команда: --hold TKU500 --price 250 --order 250
+До изменений:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Hold/ORDER200,
+TKU500,250,Stock,
+После изменений:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Hold/ORDER200,
+TKU500,250,Hold/ORDER250,
+
+Команда: --hold TKU500 --price 300 --order 300
+До изменений:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Hold/ORDER200,
+TKU500,250,Hold/ORDER250,
+Не удалось выполнить действие
+
+Ожидание доступа к файлу...
+Команда: --hold TKU500 --price 150 --order 150
+До изменений:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Hold/ORDER200,
+TKU500,250,Hold/ORDER250,
+Не удалось выполнить действие
+
+1 запуск:
+TKU100,100,Stock,
+TKU200,200,Stock,
+TKU300,300,Stock,
+TKU500,400,Stock,
+TKU500,200,Hold/ORDER200,
+TKU500,250,Hold/ORDER250,
+
+2 запуск:
+TKU100,100,Stock
+TKU200,200,Stock
+TKU300,300,Stock
+TKU500,400,Stock
+TKU500,200,Hold/ORDER200
+TKU500,300,Hold/ORDER300
+
+while (!flock($stockFile, LOCK_EX | LOCK_NB)) {
+
+    if ($isFirstIter) {
+        //echo "Команда: $command" . PHP_EOL;
+        //echo PHP_EOL;
+        echo "Ожидание доступа к файлу..." . PHP_EOL;
+        //usleep(500 * 1000);
+        $isFirstIter = false;
+    }
+
+    //usleep(500 * 1000);
+}
